@@ -107,15 +107,15 @@ for peak_index in selected_peaks:
 
 
 # Plot the original data with selected regions set to zero
-plt.figure()
+# plt.figure()
 plt.plot(time, raw_volts, label='Original Data')
 plt.show()
 
-plt.figure()
+# plt.figure()
 for i, data in enumerate(selected_data):
     plt.plot(data['time'], data['voltage'], label=f'Peak {i + 1}')
 
-plt.figure()
+# plt.figure()
 plt.scatter(time[selected_peaks], raw_volts[selected_peaks], color='red', marker='o', label='Selected Peaks')
 plt.plot(time, original_volts, label='Original Signal', color='green', alpha=0.33)
 plt.xlabel('Time (s)')
@@ -135,32 +135,30 @@ plt.show()
 # plt.show()
 
 
-# ----------------------------------------------------------------------------------------
-#                         find the ECAP peaks, plot them all
-# ----------------------------------------------------------------------------------------
+'''
+At this point, raw_volts is cleaned of stim artifacts. Now we need to find the
+acutal responses, plot them all on the same scale, and plot thew average response.
+This is done by using the first difference of the processed signal to find the
+regions I set to zero, since we know the response follows directly after
+for some characteristic time (<10ms). Using the stored indices of where the zero
+signal ends, capture the data in some time window after, store that in a separate
+vector, then plot all those vectors + the average of those vectors. This is the 
+ECAP we care about.
+
+'''
 
 
-# At this point, raw_volts is now cleaned of stim artifacts. Now we need to find the first
-# N peaks, set their x-values to an arbitrary timescale, average them, and plot that value
-# as a single peak. Also plot all N peaks overlaid for variation visualization
-
-# Copy the now-edited data for second round of thresholding
+# Copy the now-edited data for safety and manipulation
 responses = raw_volts.copy()
 
-# Set a new amplitude threshold for peak detection
-amplitude_threshold = 50
-
-# # Define number of steps to set to zero 
-# num_steps_before = 100
-# num_steps_after = 100
-
-# The following code will use the first difference of the processed signal to find the ROI for averaging (down below)
-
+# Vector of first differences so we know where to look for zeroes
 first_difference = np.diff(responses)
 
-num_zeros = num_steps_before+num_steps_after
+num_zeros = num_steps_before+num_steps_after # where the zeroes are located
 last_zero_indices = []
-consecutive_zeros = 0
+consecutive_zeros = 0 # set an iterator
+
+# find the set of zeroes and where it ends. append the indices of the zeroes for all data
 for i, val in enumerate(first_difference):
   if val == 0:
     consecutive_zeros += 1
@@ -169,8 +167,16 @@ for i, val in enumerate(first_difference):
   if consecutive_zeros == num_zeros:
     last_zero_indices.append(i)
     
-window_size = 5000
+# Window size = number of steps before and after the response to save + plot
+window_size = 200
 
+window_time = window_size/30 # window size in milliseconds
+
+# Convert sample number to time steps @ 30 kHz sampling
+time_list = [step / 30 for step in range(0, window_size)]
+
+
+# Collect all the ECAPs from the signal in some time interval around 
 list_of_windows = []
 
 for i in np.arange(len(last_zero_indices)):
@@ -182,22 +188,25 @@ arr_of_windows = np.concatenate((list_of_windows), axis = 0)
 
 
 plt.figure()
-plt.suptitle(f"Plot of Stimulus Response")
-plt.title(f'Window Size: {window_size}')
+plt.suptitle(f"All ECAPs, {stim_amps} Stim Current")
+plt.title(f'Window Size: {window_size} steps')
 for i in np.arange(len(list_of_windows)):
     dat = list_of_windows[i].T
-    plt.plot(dat, label = f'Response {i}')
+    plt.plot(time_list, dat, label = f'Response {i}')
+    plt.xlabel("Time (ms)")
+    plt.ylabel("Voltage (a.u.)")
+    
 
-plt.legend()
+# plt.legend()
 plt.show()
 
-
+# Calculate the average response of all those found and plot it seperately
 mean_response = np.mean(arr_of_windows, axis = 0)
 
 plt.figure()
-plt.title("Average Response")
-plt.plot(mean_response)
-plt.xlabel("Sample Number")
+plt.title(f"Average ECAP, {stim_amps} Stim Current")
+plt.plot(time_list, mean_response)
+plt.xlabel("Time (ms)")
 plt.ylabel("Voltage (a.u.)")
 plt.show()
 
@@ -209,154 +218,3 @@ plt.show()
 
 
 
-
-
-
-
-
-
-# Find new peaks using scipy's find_peaks function
-peaks2, _ = find_peaks(responses, height=amplitude_threshold)
-
-# Limit to the first N peaks if available, otherwise use all peaks
-N = 10000
-selected_peaks2 = peaks2[:min(N, len(peaks))]
-
-# Create an empty list to store peak data
-peak_data = [] 
-
-# Loop through the indices of the found peaks to extract the data and store in peak_data vector
-for peak_index in selected_peaks2:
-  start_index = max(0, peak_index - num_steps_before)
-  end_index = min(len(time), peak_index + num_steps_after + 1)
-
-  # Extract the data from responses
-  peak_segment = responses[start_index:end_index]
-
-  # Append the extracted data to the peak_data list
-  peak_data.append(peak_segment)
-
-
-plt.figure()
-for i, peak_segment in enumerate(peak_data):
-    # Label each plot with a unique name
-    label = f"Peak {i+1}"
-    
-    plt.plot(peak_segment, label = label)
-    
-plt.legend()
-plt.show()
-
-
-
-
-
-
-
-# The below code to plot the multiple peaks works good, but the traces don't share x-axis values
-fig, ax = plt.subplots()  # Create a figure and an axes object
-
-for i, peak_segment in enumerate(peak_data):
-    # Label each plot with a unique name
-    label = f"Peak {i+1}"
-
-    # Plot the peak segment on the same axes
-    ax.plot(time[start_index:end_index], peak_segment, label=label)
-
-# Add labels and a legend
-ax.set_xlabel("Time")
-ax.set_ylabel("Voltage")
-plt.tight_layout()
-# ax.legend()
-plt.title('All ECAPs Found, Single Channel, 120 uA')
-plt.show()
-
-
-
-# Plot the average value of all the discovered response spikes
-
-# Calculate average voltage directly using time and peak_data
-total_voltage = np.zeros_like(time)  # Initialize accumulator for voltage sum
-num_segments = np.zeros_like(time)  # Counter for number of segments contributing to each time point
-
-for peak_segment in peak_data:
-    peak_times = time[peak_index - num_steps_before : peak_index + num_steps_after + 1]  # Extract time points for this segment
-    
-    # Convert peak_times to integer indices
-    integer_indices = np.searchsorted(time, peak_times)
-
-    total_voltage[integer_indices] += peak_segment
-    num_segments[integer_indices] += 1
-
-average_voltage = total_voltage / num_segments
-
-# Plot average voltage
-fig, ax = plt.subplots()  # Create a figure and an axes object
-
-ax.plot(time, average_voltage, label="Average Voltage")
-
-# Add labels, legend, and title
-ax.set_xlabel("Time")
-ax.set_ylabel("Voltage")
-plt.tight_layout()
-# ax.legend()
-plt.title('Average of All ECAPs, Single Channel, 120 uA')
-plt.show()
-
-print(max(average_voltage))
-
-
-
-
-
-# ------------------------------------------------------------------------------------------
-# import numpy as np
-# import matplotlib.pyplot as plt
-
-# def find_peaks(voltage, amplitude_threshold):
-#     peaks = np.where(voltage > amplitude_threshold)[0]
-#     return peaks
-
-# def extract_data_around_peak(time, voltage, peak_index, num_steps_before, num_steps_after):
-#     if peak_index == -1:
-#         return None, None  # Handle the case where no peak was found
-    
-#     start_index = max(0, peak_index - num_steps_before)
-#     end_index = min(len(time), peak_index + num_steps_after + 1)
-
-#     return time[start_index:end_index], voltage[start_index:end_index]
-
-# # Example data generation
-# time = np.linspace(0, 10, 1000)
-# raw_volts = np.sin(time) + 0.5 * np.random.normal(size=len(time))
-
-# # Set amplitude threshold for peak detection
-# amplitude_threshold = 1.5
-
-# # Find the first 5 peaks
-# peaks = find_peaks(raw_volts, amplitude_threshold)[:5]
-
-# # Extract and set data around each peak to zero
-# num_steps_before = 10
-# num_steps_after = 10
-
-# for peak_index in peaks:
-#     selected_time, selected_voltage = extract_data_around_peak(
-#         time, raw_volts, peak_index, num_steps_before, num_steps_after
-#     )
-
-#     # Find the indices of selected time steps in the original time array
-#     original_indices = np.searchsorted(time, selected_time)
-
-#     # Set the corresponding original voltage values to zero
-#     raw_volts[original_indices] = 0
-
-# # Plot the original data with selected regions set to zero
-# plt.plot(time, raw_volts, label='Modified Original Data')
-# plt.scatter(time[peaks], raw_volts[peaks], color='red', marker='o', label='Selected Peaks')
-# plt.xlabel('Time')
-# plt.ylabel('Voltage')
-# plt.xlim(0.1, 1.5)
-# plt.ylim(-2, 2)
-# plt.legend()
-# plt.show()
