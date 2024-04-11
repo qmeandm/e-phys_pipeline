@@ -6,7 +6,7 @@ Created on Wed Feb  7 14:03:12 2024
 @author: xander
 
 Testing a file finder loop for Intan Reader script so we can loop through all the files
-in a directory/sub directory, and read the .rhs files. Evenrually this will be the
+in a directory/sub directory, and read the .rhs files. Eventually this will be the
 wrapper for the AS_intan_reader script!
 
 """

@@ -38,7 +38,7 @@ exec(open("importrhsutilities.py").read())
     # 155351 - 120uA , 155256 - 110 uA, 155222 - 100 uA, 162231 - 40 uA post washout
     #  - 20uA
 
-filename = 'RFASDO_ZF_TS Nerve_240201_240201_155256.rhs' # Change this variable to load a different data file
+filename = 'RFASDO_ZF_TS Nerve_240201_240201_155222.rhs' # Change this variable to load a different data file
 result, data_present = load_file(filename)
 
 
@@ -107,10 +107,15 @@ for peak_index in selected_peaks:
 
 
 # Plot the original data with selected regions set to zero
+plt.figure()
 plt.plot(time, raw_volts, label='Original Data')
+plt.show()
+
+plt.figure()
 for i, data in enumerate(selected_data):
     plt.plot(data['time'], data['voltage'], label=f'Peak {i + 1}')
 
+plt.figure()
 plt.scatter(time[selected_peaks], raw_volts[selected_peaks], color='red', marker='o', label='Selected Peaks')
 plt.plot(time, original_volts, label='Original Signal', color='green', alpha=0.33)
 plt.xlabel('Time (s)')
@@ -136,8 +141,8 @@ plt.show()
 
 
 # At this point, raw_volts is now cleaned of stim artifacts. Now we need to find the first
-# 10 peaks, set their x-values to an arbitrary timescale, average them, and plot that value
-# as a single peak. Also plot all 10 peaks overlaid for variation visualization
+# N peaks, set their x-values to an arbitrary timescale, average them, and plot that value
+# as a single peak. Also plot all N peaks overlaid for variation visualization
 
 # Copy the now-edited data for second round of thresholding
 responses = raw_volts.copy()
@@ -145,9 +150,70 @@ responses = raw_volts.copy()
 # Set a new amplitude threshold for peak detection
 amplitude_threshold = 50
 
-# Define number of steps to set to zero 
-num_steps_before = 100
-num_steps_after = 100
+# # Define number of steps to set to zero 
+# num_steps_before = 100
+# num_steps_after = 100
+
+# The following code will use the first difference of the processed signal to find the ROI for averaging (down below)
+
+first_difference = np.diff(responses)
+
+num_zeros = num_steps_before+num_steps_after
+last_zero_indices = []
+consecutive_zeros = 0
+for i, val in enumerate(first_difference):
+  if val == 0:
+    consecutive_zeros += 1
+  else:
+    consecutive_zeros = 0
+  if consecutive_zeros == num_zeros:
+    last_zero_indices.append(i)
+    
+window_size = 5000
+
+list_of_windows = []
+
+for i in np.arange(len(last_zero_indices)):
+    window = responses[last_zero_indices[i]:last_zero_indices[i]+window_size]
+    window = window.reshape(1, window.shape[0])
+    list_of_windows.append(window)
+    
+arr_of_windows = np.concatenate((list_of_windows), axis = 0)
+
+
+plt.figure()
+plt.suptitle(f"Plot of Stimulus Response")
+plt.title(f'Window Size: {window_size}')
+for i in np.arange(len(list_of_windows)):
+    dat = list_of_windows[i].T
+    plt.plot(dat, label = f'Response {i}')
+
+plt.legend()
+plt.show()
+
+
+mean_response = np.mean(arr_of_windows, axis = 0)
+
+plt.figure()
+plt.title("Average Response")
+plt.plot(mean_response)
+plt.xlabel("Sample Number")
+plt.ylabel("Voltage (a.u.)")
+plt.show()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Find new peaks using scipy's find_peaks function
 peaks2, _ = find_peaks(responses, height=amplitude_threshold)
@@ -169,6 +235,22 @@ for peak_index in selected_peaks2:
 
   # Append the extracted data to the peak_data list
   peak_data.append(peak_segment)
+
+
+plt.figure()
+for i, peak_segment in enumerate(peak_data):
+    # Label each plot with a unique name
+    label = f"Peak {i+1}"
+    
+    plt.plot(peak_segment, label = label)
+    
+plt.legend()
+plt.show()
+
+
+
+
+
 
 
 # The below code to plot the multiple peaks works good, but the traces don't share x-axis values
@@ -221,7 +303,7 @@ plt.tight_layout()
 plt.title('Average of All ECAPs, Single Channel, 120 uA')
 plt.show()
 
-
+print(max(average_voltage))
 
 
 
